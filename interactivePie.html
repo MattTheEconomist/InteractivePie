@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Interactive Pie</title>
+        <!-- <script src="https://d3js.org/d3.v5.min.js"></script> -->
+        <script src="https://d3js.org/d3.v5.min.js"></script>
+
+
+	
+<style type="text/css">
+
+    text {
+        font-family: sans-serif;
+        font-size: 12px;
+        fill: black;
+    }
+
+    #allContainer{
+        display: inline-block
+    }
+
+    #svgContainer{
+        float:left; 
+        overflow: hidden;
+        
+    }
+
+    #tableContainer{
+        float:right;
+        overflow: hidden;
+        margin-left: 50px
+    }
+    .groupColumn{
+        padding-right: 10px
+    }
+
+    .productColumn{
+        padding-right: 10px
+    }
+
+    .sellerColumn{
+        padding-right:10px
+    }
+    #expTable{
+        margin-top: 10px;
+    }
+    .titleText{
+        margin-left: 50px
+    }
+
+    .label{
+        right: 10px;
+        font-size: smallest;
+  
+    }
+    #tooltip {
+                position: absolute;
+                width: 100px;
+                height: auto;
+                padding: 10px;
+                background-color: white;
+                border-radius: 10px;
+                box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+                pointer-events: none;
+        }
+        #tooltip.hidden {
+        opacity: 0;
+        }
+
+    #tooltip p {
+    margin: 0;
+    font-family: sans-serif;
+    font-size: 16px;
+    line-height: 20px;
+    }
+    
+     
+
+    
+
+
+    
+
+
+</style>
+</head>
+<body>
+
+
+
+    <h3 class="titleText"id="header">My Monthly Budget</h3>
+    <h5 class="titleText" id="underHeader">Click any slice of the pie to drill-down</h5>
+
+
+    <div id="allContainer">
+        <div id="svgContainer"></div>
+
+        
+        <div id="tableContainer">
+            <h3 id=tableHead></h3>
+            <div id=tableHeadUnderline></div>
+            <table id="expTable">
+
+            </table>
+            <div id="btnContainer"></div>
+        </div>
+
+        <div id="tooltip" class="hidden">
+            
+            <p><span id="value"></span></p>
+           </div>
+           
+        
+        
+
+    </div>
+
+<script type="text/javascript">
+
+//function to format numbers as dollars in table 
+ function reformatAsDollar(num){
+     let temp = num.toString()
+    if (num>=1000){
+        return '$'+temp.substr(0,1) +','+ temp.substr(1, temp.length)
+    }else{
+        return '$'+temp
+    }
+
+ }
+        
+
+
+
+    //Width and height
+    var w = 300;
+    var h = 300;
+
+    d3.csv("pieData.csv", d=>{
+        return{
+
+            seller: d.seller, 
+            product: d.product, 
+            group: d.group, 
+            amount: parseFloat(d.amount)
+        }
+
+    
+
+
+
+
+    }).then(data=>{
+        let dataset = data
+
+  
+
+
+
+
+        //stack by group 
+        let groupLevelObj = d3.nest()
+                    .key(d=>{return d.group})
+                    .rollup(function(v){return{
+                        total: d3.sum(v, d=>{return d.amount})
+                    }})
+                    .entries(dataset)
+
+                
+            //create top level - all groups
+        groupLevelExp = []
+        groupLevelLables=[]
+        Object.keys(groupLevelObj).forEach(key=>{
+            groupLevelExp.push(groupLevelObj[key].value.total)
+            groupLevelLables.push(groupLevelObj[key].key)
+        })
+
+        // console.table(groupLevelObj)
+
+        //create datasets for each group
+
+        function zoomFunction(){
+
+            
+            groupId = d3.select(this).attr("id")
+
+            //hide text under header 
+            let underHeader = document.getElementById("underHeader")
+            underHeader.style.visibility = 'hidden'
+
+
+
+            let filtData = dataset.filter(d=>{
+                return d.group=== groupLevelLables[groupId]
+            })
+
+            // console.table(filtData)
+
+            //full data arrays. use these for the TABLE 
+            let allFiltExp = []
+            let allFiltLabel = []
+            let currentGroup = []
+            
+
+            Object.keys(filtData).forEach(key=>{
+                allFiltExp.push(filtData[key].amount)
+                allFiltLabel.push(filtData[key].product)
+                currentGroup.push(filtData[key].group)
+                
+
+            })
+
+                      
+
+            //create color pallete with the same hue as group 
+
+                //first, grab the hue from the current group 
+                    let groupHues = {
+                        "Bills": 337, 
+                        "Restaurant": 124, 
+                        "Retail": 182, 
+                        "Groceries": 286
+                    }
+
+                    let currentHue = groupHues[currentGroup[0]]
+              
+
+                //second, develop a list of colors based on that group level hue 
+                let subColors = []
+                let currentLightness = 85
+
+                for(let i=0; i<currentGroup.length; i++){
+                    subColors.push(
+                        `hsl(${currentHue}, 69%, ${currentLightness-(i*10)}%)`
+                    )
+
+
+                }
+
+
+                //populate table head and underline color 
+
+                let currentColor = []
+
+                Object.keys(filtData).forEach(key=>{
+                currentColor.push(`hsl(${currentHue}, 69%, 50% )`) 
+            })
+
+            let tableHead = document.getElementById('tableHead')
+            tableHead.innerHTML = `${currentGroup[0]}`
+
+            let tableHeadUnderline = document.getElementById('tableHeadUnderline')
+            tableHeadUnderline.style.backgroundColor = `${currentColor[0]}`
+            tableHeadUnderline.style.width = `400px`
+            tableHeadUnderline.style.height= `5px`
+
+
+
+
+            //take the individual expenses, and  get them to correspond with their product's color. 
+            let tableColors = [subColors[0]]
+            let colorIndex = 0
+            for(let i=1; i<allFiltExp.length; i++){
+                if (allFiltLabel[i]!=allFiltLabel[i-1]){
+                    colorIndex+=1
+                    tableColors.push(subColors[colorIndex])
+                }else{
+                    tableColors.push(subColors[colorIndex])
+                }
+
+            }
+            console.log(filtData)
+
+
+            //reformat expense amounts as dollars for table
+            let tableExp = []
+
+            for(let i=0; i<allFiltExp.length; i++){
+                tableExp.push(reformatAsDollar(allFiltExp[i]))
+            }
+
+           
+
+
+   
+
+            
+
+
+            //create table from group 
+            const expTable = document.getElementById("expTable")
+            let tableText = `  <tr>
+                             <th>Color</th>
+                             <th>Product</th>
+                            <th>Seller</th>
+                            <th>Amount</th>
+                        </tr>`
+
+            Object.keys(filtData).forEach(key=>{
+                tableText += `
+                                <tr>
+                    <td style="background-color:${tableColors[key]}"></td>
+                    <td class="productColumn">${filtData[key].product}</td>
+                    <td class="sellerColumn">${filtData[key].seller}</td>
+                    <td>${ reformatAsDollar(allFiltExp[key])  }</td>
+                    
+                </tr>
+                `
+                
+            })
+                expTable.innerHTML = tableText
+
+                //create zoom button 
+                const btnContainer = document.getElementById("btnContainer")
+            btnContainer.innerHTML = `<input type="button" value="Restore Group View" id="zoomOutBtn">`
+
+            const zoomOutBtn = document.getElementById("zoomOutBtn")
+            zoomOutBtn.addEventListener("click", e=>{ window.location.reload()})
+            zoomOutBtn.style.backgroundColor = 'black'
+            zoomOutBtn.style.color = 'white'
+            zoomOutBtn.style.width = '50%'
+            zoomOutBtn.style.marginTop = '20px'
+            zoomOutBtn.style.flot = 'right'
+            
+            
+            
+            
+    
+
+
+            //stack deez use for PIE GRAPH 
+            let groupByProduct = d3.nest()
+                                    .key(d=>{return d.product})
+                                    .rollup(function(v){return{
+                                        total: d3.sum(v, d=>{return d.amount})
+                                    }})
+                                    .entries(filtData)
+            
+                // console.table(groupByProduct)
+
+
+            //grouped data arrays
+            let groupedFiltExp=[]
+            let groupedFiltLabel = []
+
+            Object.keys(groupByProduct).forEach(key=>{
+                groupedFiltExp.push(groupByProduct[key].value.total)
+                groupedFiltLabel.push(groupByProduct[key].key)
+            })
+
+            
+                         
+            arcs.remove()
+
+
+
+            arcs = svg.selectAll("g.arc")
+                .data(pie(groupedFiltExp))
+                .enter()
+                .append("g")
+                .attr("class", "arc")
+                .attr("transform", "translate(" + outerRadius + "," + outerRadius + ")")
+                .attr("id", (d,i)=>{return i})
+                .on("mouseover", (d,i)=>{
+                    d3.select("#tooltip")
+                      .style("left", d3.event.pageX + "px")
+                        .style("top", d3.event.pageY + "px")
+                        .style("opacity", 1)
+                        .select("#value")
+                        .text(groupedFiltLabel[i]);
+                })
+                .on("mouseout", ()=>{
+                      d3.select("#tooltip")
+                      .style("opacity", 0)
+                  })
+
+
+
+            //Draw arc paths
+                arcs.append("path")
+                    .attr("fill", function(d, i) {
+                        return subColors[i];
+                    })
+                    .attr("d", arc);
+
+
+                // // Labels
+                // arcs.append("text")
+                //     .attr("transform", function(d) {
+                //         return "translate(" + arc.centroid(d) + ")";
+                //     })
+                //     .attr("text-anchor", "middle")
+                //     .text(function(d,i) {
+                //         return groupedFiltLabel[i];
+                //     });
+
+
+
+        }
+    
+
+ 
+
+          
+        
+
+    var outerRadius = w / 2;
+    var innerRadius = w/3;  //im making doughnuts out here
+    var arc = d3.arc()
+                .innerRadius(innerRadius)
+                .outerRadius(outerRadius);
+    
+    var pie = d3.pie();
+    
+    //Easy colors accessible via a 10-step ordinal scale
+    var color = d3.scaleOrdinal(d3.schemeCategory10);
+
+    //Four color hues for top-level display 
+    let groupLevelColors = ['hsl(337, 69%, 50%)','hsl(124, 69%, 50%)', 'hsl(182, 69%, 50%)', 'hsl(286, 69%, 50%)']
+
+
+
+
+        //top level table 
+        const expTable = document.getElementById("expTable")
+            let tableText = `  <tr>
+                            <th>Color</th>
+                            <th>Group</th>
+                            <th>Amount</th>
+                        </tr>`
+
+            Object.keys(groupLevelObj).forEach(key=>{
+                tableText += `
+                                <tr>
+                    <td style="background-color:${groupLevelColors[key]}"></td>
+                    <td class="groupColumn">${groupLevelObj[key].key}</td>
+                    <td>${reformatAsDollar(groupLevelObj[key].value.total)}</td>
+                </tr>
+                `
+            })
+
+            expTable.innerHTML = tableText
+
+
+    //Create SVG element
+    var svg = d3.select("#svgContainer")
+                .append("svg")
+                .attr("width", w)
+                .attr("height", h);
+    
+    //Set up groups
+    var arcs = svg.selectAll("g.arc")
+                  .data(pie(groupLevelExp))
+                  .enter()
+                  .append("g")
+                  .attr("class", "arc")
+                  .attr("transform", "translate(" + outerRadius + "," + outerRadius + ")")
+                  .attr("id", (d,i)=>{return i})
+                //   .on("click", zoomFunction)
+                  .on("click", zoomFunction)
+                  .on("mouseover", (d,i)=>{
+                       
+                      d3.select("#tooltip")
+                      .style("left", d3.event.pageX + "px")
+                        .style("top", d3.event.pageY + "px")
+                        .style("opacity", 1)
+                        .select("#value")
+                        .text(groupLevelLables[i]);
+
+
+                  })
+                  .on("mouseout", ()=>{
+                      d3.select("#tooltip")
+                      .style("opacity", 0)
+                  })
+
+                
+    
+    //Draw arc paths
+    arcs.append("path")
+        .attr("fill", function(d, i) {
+            return groupLevelColors[i];
+        })
+        .attr("d", arc);
+    
+    // // Labels
+    // arcs.append("text")
+    //     .attr("transform", function(d) {
+    //         return "translate(" + arc.centroid(d) + ")";
+    //     })
+    //     .attr("text-anchor", "middle")
+    //     .text(function(d,i) {
+    //         return groupLevelLables[i];
+    //     })
+    //     .attr("class", "label")
+
+
+        
+
+
+
+
+})
+                
+</script>
+</body>
